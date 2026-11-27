@@ -1,0 +1,38 @@
+;; Plektron SIMD kernel: out[0..CO) += x[0..CNT) · W[CNT×CO] (row-major, CO contiguous)
+;; CO must be a multiple of 16. All pointers are byte offsets into linear memory.
+(module
+  (memory (export "mem") 1)
+  (func (export "vecmat") (param $x i32) (param $w i32) (param $out i32) (param $cnt i32) (param $co i32)
+    (local $cb i32) (local $j i32) (local $xp i32) (local $wp i32) (local $op i32) (local $stride i32)
+    (local $a0 v128) (local $a1 v128) (local $a2 v128) (local $a3 v128) (local $xv v128)
+    (local.set $stride (i32.shl (local.get $co) (i32.const 2)))
+    (local.set $cb (i32.const 0))
+    (block $done_cb
+      (loop $loop_cb
+        (br_if $done_cb (i32.ge_u (local.get $cb) (local.get $co)))
+        (local.set $op (i32.add (local.get $out) (i32.shl (local.get $cb) (i32.const 2))))
+        (local.set $a0 (v128.load offset=0 (local.get $op)))
+        (local.set $a1 (v128.load offset=16 (local.get $op)))
+        (local.set $a2 (v128.load offset=32 (local.get $op)))
+        (local.set $a3 (v128.load offset=48 (local.get $op)))
+        (local.set $xp (local.get $x))
+        (local.set $wp (i32.add (local.get $w) (i32.shl (local.get $cb) (i32.const 2))))
+        (local.set $j (local.get $cnt))
+        (block $done_j
+          (loop $loop_j
+            (br_if $done_j (i32.eqz (local.get $j)))
+            (local.set $xv (v128.load32_splat (local.get $xp)))
+            (local.set $a0 (f32x4.add (local.get $a0) (f32x4.mul (local.get $xv) (v128.load offset=0 (local.get $wp)))))
+            (local.set $a1 (f32x4.add (local.get $a1) (f32x4.mul (local.get $xv) (v128.load offset=16 (local.get $wp)))))
+            (local.set $a2 (f32x4.add (local.get $a2) (f32x4.mul (local.get $xv) (v128.load offset=32 (local.get $wp)))))
+            (local.set $a3 (f32x4.add (local.get $a3) (f32x4.mul (local.get $xv) (v128.load offset=48 (local.get $wp)))))
+            (local.set $xp (i32.add (local.get $xp) (i32.const 4)))
+            (local.set $wp (i32.add (local.get $wp) (local.get $stride)))
+            (local.set $j (i32.sub (local.get $j) (i32.const 1)))
+            (br $loop_j)))
+        (v128.store offset=0 (local.get $op) (local.get $a0))
+        (v128.store offset=16 (local.get $op) (local.get $a1))
+        (v128.store offset=32 (local.get $op) (local.get $a2))
+        (v128.store offset=48 (local.get $op) (local.get $a3))
+        (local.set $cb (i32.add (local.get $cb) (i32.const 16)))
+        (br $loop_cb)))))

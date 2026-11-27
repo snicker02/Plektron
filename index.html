@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plektron — audio to guitar tab</title>
+<meta name="description" content="Upload a song and get guitar tab, chords, MIDI and MusicXML. Runs entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2C9 2 5 8 6 14c1 7 6 13 10 16 4-3 9-9 10-16 1-6-3-12-10-12z%22 fill=%22%23f2a23a%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=1.2.1">
+</head>
+<body>
+<header id="top">
+  <div class="brand">Plektron <span class="ver">v1.2.1</span><span class="sub">audio → guitar tab</span></div>
+  <label class="btn primary" for="file"><span class="long">Open audio…</span><span class="short">Open</span></label>
+  <input id="file" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac" hidden>
+  <button id="demoBtn" class="btn">Demo</button>
+  <div class="seg" id="viewSeg" role="tablist">
+    <button data-view="tab" class="on">Tab</button>
+    <button data-view="roll">Roll</button>
+    <button data-view="chords">Chords</button>
+  </div>
+  <span id="status" class="status">Open an MP3 to begin.</span>
+</header>
+
+<main id="app">
+  <section id="view">
+    <div id="stage">
+      <canvas id="tabCanvas"></canvas>
+      <canvas id="rollCanvas" hidden></canvas>
+      <div id="chordView" hidden></div>
+      <div id="empty" class="overlay">
+        <div class="card">
+          <h2>Drop a song here</h2>
+          <p>MP3, WAV, OGG, M4A or FLAC. Everything runs locally in your browser — nothing is uploaded.</p>
+          <p class="muted">Works best on solo or clearly audible guitar. On full mixes, use the <b>Chords</b> view.</p>
+          <div class="row center"><label class="btn primary" for="file">Open audio…</label><button class="btn" id="demoBtn2">Try the demo</button></div>
+        </div>
+      </div>
+      <div id="busy" class="overlay" hidden>
+        <div class="card">
+          <h2 id="busyTitle">Listening…</h2>
+          <div class="bar"><div id="busyBar"></div></div>
+          <p id="busyText" class="muted"></p>
+          <button id="cancelBtn" class="btn">Cancel</button>
+        </div>
+      </div>
+      <button id="applyFloat" class="btn apply" hidden>Apply changes ⏎</button>
+    </div>
+    <div id="transport">
+      <button id="playBtn" class="btn icon" title="Play / pause (Space)">▶</button>
+      <button id="stopBtn" class="btn icon" title="Back to start">■</button>
+      <span id="clock" class="mono">0:00.0 / 0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <label class="follow"><input type="checkbox" id="follow" checked> Follow</label>
+    </div>
+  </section>
+
+  <nav id="tabbar" aria-label="Panels"></nav>
+  <aside id="panel">
+    <section class="sec" data-sec="source">
+      <h3>Source</h3>
+      <div id="fileInfo" class="muted">No file loaded.</div>
+      <div class="ctl"><span>Listen to</span><select id="srcMode">
+        <option value="auto">Auto</option><option value="ai">Guitar &amp; keys (AI)</option><option value="mix">Full mix</option><option value="side">Sides (L−R)</option><option value="left">Left channel</option><option value="right">Right channel</option>
+      </select></div>
+      <div class="ctl"><span>Remove drums</span><select id="drumMode"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select></div>
+      <div class="row"><button class="btn" id="relisten" disabled>Re-analyse with these</button></div>
+      <p class="hint"><b>Guitar &amp; keys (AI)</b> separates the song with a neural network (Spleeter) and keeps everything except vocals, drums and bass. The model is a one-time 43&nbsp;MB download and runs on your device. <b>Sides</b> is a cheaper trick that cancels whatever is panned to the centre. <b>Remove drums</b> strips percussive hits. Auto picks AI separation when it detects a band mix.</p>
+      <label class="chk"><input type="checkbox" id="hearSrc"> Play what Plektron listens to</label>
+      <div class="ctl"><span>Original volume</span><input id="volOrig" type="range" min="0" max="1" step="0.01" value="0.9"><output id="volOrigV">90%</output></div>
+      <div class="ctl"><span>Tab synth volume</span><input id="volSynth" type="range" min="0" max="1" step="0.01" value="0"><output id="volSynthV">0%</output></div>
+      <p class="hint">Raise the synth to hear what Plektron transcribed against the recording.</p>
+    </section>
+
+    <section class="sec" data-sec="detect">
+      <h3>Detection</h3>
+      <div class="ctl"><span>Onset threshold</span><input data-k="onsetThresh" data-x type="range" min="0.1" max="0.9" step="0.01"><output></output></div>
+      <div class="ctl"><span>Note threshold</span><input data-k="frameThresh" data-x type="range" min="0.05" max="0.8" step="0.01"><output></output></div>
+      <div class="ctl"><span>Min note length (ms)</span><input data-k="minNoteMs" data-x type="range" min="20" max="300" step="5"><output></output></div>
+      <div class="ctl"><span>Min loudness</span><input data-k="minAmp" data-x type="range" min="0" max="0.8" step="0.01"><output></output></div>
+      <div class="ctl"><span>Max notes at once</span><input data-k="maxPoly" data-x type="range" min="1" max="6" step="1"><output></output></div>
+      <label class="chk"><input data-k="overtones" data-x type="checkbox"> Suppress overtones in single-note lines</label>
+      <label class="chk"><input data-k="melodia" data-x type="checkbox"> Recover notes without a clear attack</label>
+      <div class="row"><button class="btn" data-preset="lead">Lead / riffs</button><button class="btn" data-preset="chords">Strummed</button><button class="btn" data-preset="default">Default</button></div>
+    </section>
+
+    <section class="sec" data-sec="guitar">
+      <h3>Guitar</h3>
+      <div class="ctl"><span>Tuning</span><select data-k="tuningName" data-x id="tuningSel"></select></div>
+      <div class="ctl"><span>Capo</span><input data-k="capo" data-x type="range" min="0" max="12" step="1"><output></output></div>
+      <div class="ctl"><span>Highest fret</span><input data-k="maxFret" data-x type="range" min="12" max="24" step="1"><output></output></div>
+      <div class="ctl"><span>Max hand span (frets)</span><input data-k="maxSpan" data-x type="range" min="3" max="6" step="1"><output></output></div>
+      <div class="ctl"><span>Preferred position (fret)</span><input data-k="prefFret" data-x type="range" min="0" max="12" step="1"><output></output></div>
+    </section>
+
+    <section class="sec" data-sec="rhythm">
+      <h3>Rhythm</h3>
+      <div class="ctl"><span>Tempo (BPM, 0 = auto)</span><input data-k="bpm" data-x type="number" min="0" max="300" step="0.5"></div>
+      <div class="row"><button class="btn" id="halfTempo">½ tempo</button><button class="btn" id="dblTempo">2× tempo</button><span id="tempoInfo" class="muted"></span></div>
+      <div class="ctl"><span>Beats per bar</span><select data-k="beatsPerBar" data-x><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div>
+      <div class="ctl"><span>Grid</span><select data-k="subdiv" data-x><option value="2">8th notes</option><option value="3">8th triplets</option><option value="4" selected>16th notes</option><option value="6">16th triplets</option></select></div>
+      <div class="row"><span class="lbl">Downbeat</span><button class="btn" id="dbPrev">◀ beat</button><button class="btn" id="dbNext">beat ▶</button></div>
+      <div class="ctl"><span>Chord change resistance</span><input data-k="changePenalty" data-x type="range" min="0" max="0.6" step="0.01"><output></output></div>
+    </section>
+
+    <section class="sec" data-sec="edit">
+      <h3>Edit</h3>
+      <div id="selInfo" class="muted">Tap a note in Tab or Roll to select it.</div>
+      <div class="row">
+        <button class="btn" id="altPrev" disabled>◀ other position</button>
+        <button class="btn" id="altNext" disabled>other position ▶</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="pitchDown" disabled>pitch −</button>
+        <button class="btn" id="pitchUp" disabled>pitch +</button>
+        <button class="btn danger" id="delNote" disabled>Delete note</button>
+      </div>
+      <div class="row"><button class="btn" id="undoBtn" disabled>Undo</button><button class="btn" id="redoBtn" disabled>Redo</button><button class="btn" id="clearEdits">Clear edits</button></div>
+      <p class="hint" id="editHint">Roll: double-tap empty space to add a note. Keys: ←/→ position, ↑/↓ pitch, Del delete, Ctrl+Z undo.</p>
+    </section>
+
+    <section class="sec" data-sec="export">
+      <h3>Export</h3>
+      <div class="ctl"><span>Title</span><input id="title" type="text" placeholder="Song title"></div>
+      <div class="row wrap">
+        <button class="btn" data-export="txt">Tab (.txt)</button>
+        <button class="btn" data-export="musicxml">MusicXML</button>
+        <button class="btn" data-export="mid">MIDI</button>
+        <button class="btn" data-export="chords">Chord sheet</button>
+        <button class="btn" data-export="copy">Copy tab</button>
+        <button class="btn" data-export="wav">Isolated audio (.wav)</button>
+      </div>
+      <p class="hint">MusicXML opens in MuseScore, Guitar Pro and TuxGuitar with string/fret positions kept.</p>
+    </section>
+
+    <section class="sec" data-sec="settings">
+      <h3>Settings</h3>
+      <label class="chk"><input type="checkbox" id="confirmMode"> Confirm changes before applying</label>
+      <button id="applyBtn" class="btn apply" hidden>Apply changes</button>
+      <div class="ctl"><span>Tab zoom</span><input id="zoom" type="range" min="0.6" max="2" step="0.05" value="1"></div>
+      <p class="hint">Note detection uses Spotify's Basic Pitch model (Apache-2.0), run by Plektron's own built-in engine with no external libraries. Analysis happens on your device.</p>
+      <p class="credit">Created with help from Claude AI</p>
+    </section>
+  </aside>
+</main>
+<script type="module" src="main.js?v=1.2.1"></script>
+</body>
+</html>

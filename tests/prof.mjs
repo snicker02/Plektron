@@ -1,0 +1,12 @@
+import fs from 'fs';
+import { GraphModel } from '../engine/graph.js';
+const json = JSON.parse(fs.readFileSync('../model/model.json'));
+const bin = fs.readFileSync('../model/group1-shard1of1.bin');
+const m = new GraphModel(json, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.length));
+const x = new Float32Array(43844).map(() => Math.random() - 0.5);
+const orig = m._run.bind(m); const tm = {};
+m._run = (node, I, a, b) => { const t = performance.now(); const r = orig(node, I, a, b); const k = node.op + ' ' + node.name.split('/').slice(-2).join('/'); tm[k] = (tm[k] || 0) + performance.now() - t; return r; };
+m.execute(x, [1, 43844, 1]); for (const k in tm) tm[k] = 0;
+m.execute(x, [1, 43844, 1]);
+Object.entries(tm).sort((a, b) => b[1] - a[1]).slice(0, 10).forEach(([k, v]) => console.log(v.toFixed(1).padStart(7), k));
+console.log('total', Object.values(tm).reduce((a, b) => a + b).toFixed(0));
