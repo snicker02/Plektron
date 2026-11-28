@@ -97,6 +97,10 @@ tests/                             Node tests (see below)
 
 **1.0.0**: First release. Tab, Roll and Chords views, editor with undo, MIDI/MusicXML/TXT export, phone layout with docked view and tabs, and confirm-before-apply mode.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
 Created with help from Claude AI
